@@ -3,6 +3,12 @@
   "description": "Settings for the JupyterLab-unfold extension.",
   "type": "object",
   "properties": {
+    "enabled": {
+      "type": "boolean",
+      "title": "Enable Unfold",
+      "description": "Enable the unfolded tree-style file browser. Reload JupyterLab after changing this setting.",
+      "default": true
+    },
     "singleClickToUnfold": {
       "type": "boolean",
       "title": "Single Click To Unfold",

@@ -11,6 +11,13 @@
   flex-grow: 1;
 }
 
+.jp-DirListing-itemModified,
+.jp-DirListing-itemFileSize,
+.jp-DirListing-itemCreated {
+  margin-left: 8px;
+  flex-shrink: 0;
+}
+
 .jp-DirListing-vbar {
   /* This is the parent padding (hardcoded in JupyterLab, plus the font size) */
   height: calc(12px + var(--jp-ui-font-size1));

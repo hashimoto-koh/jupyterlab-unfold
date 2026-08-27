@@ -145,15 +145,17 @@ export class FileTreeRenderer extends DirListing.Renderer {
     fileType?: DocumentRegistry.IFileType,
     translator?: ITranslator,
     hiddenColumns?: Set<DirListing.ToggleableColumn>,
-    selected?: boolean
+    selected?: boolean,
+    ...args: any[]
   ): void {
-    super.updateItemNode(
+    (super.updateItemNode as any)(
       node,
       model,
       fileType,
       translator,
       hiddenColumns,
-      selected
+      selected,
+      ...args
     );
 
     if (model.type === 'directory' && this.model.isOpen(model.path)) {
@@ -183,6 +185,28 @@ export class FileTreeRenderer extends DirListing.Renderer {
       vbar.classList.add('jp-DirListing-vbar');
       node.insertBefore(vbar, node.firstChild);
     }
+
+    // Reorder columns to ensure: Name -> Size -> Modified -> Created
+    const nameColumn =
+      DOMUtils.findElement(node, 'jp-DirListing-itemName') ||
+      DOMUtils.findElement(node, 'jp-DirListing-itemText');
+    const fileSize = DOMUtils.findElement(node, 'jp-DirListing-itemFileSize');
+    const modified = DOMUtils.findElement(node, 'jp-DirListing-itemModified');
+    const created = DOMUtils.findElement(node, 'jp-DirListing-itemCreated');
+
+    let lastElement: HTMLElement | null = nameColumn;
+    if (fileSize && lastElement && fileSize.parentElement === node) {
+      lastElement.insertAdjacentElement('afterend', fileSize);
+      lastElement = fileSize;
+    }
+    if (modified && lastElement && modified.parentElement === node) {
+      lastElement.insertAdjacentElement('afterend', modified);
+      lastElement = modified;
+    }
+    if (created && lastElement && created.parentElement === node) {
+      lastElement.insertAdjacentElement('afterend', created);
+      lastElement = created;
+    }
   }
 
   private model: FilterFileTreeBrowserModel;
@@ -195,6 +219,14 @@ export class FileTreeRenderer extends DirListing.Renderer {
 export class DirTreeListing extends DirListing {
   constructor(options: DirTreeListing.IOptions) {
     super({ ...options, renderer: new FileTreeRenderer(options.model) });
+  }
+
+  setColumnVisibility(
+    name: DirListing.ToggleableColumn,
+    visible: boolean
+  ): void {
+    super.setColumnVisibility(name, visible);
+    this.update();
   }
 
   set singleClickToUnfold(value: boolean) {
@@ -223,10 +255,24 @@ export class DirTreeListing extends DirListing {
 
     if (entry?.type === 'directory') {
       if (!this._singleClickToUnfold) {
-        this.model.toggle(entry.path);
+        await this.model.toggle(entry.path);
       }
     } else {
       super.handleEvent(event);
+    }
+  }
+
+  protected handleOpen(item: Contents.IModel): void {
+    // @ts-ignore
+    this._onItemOpened.emit(item);
+    if (item.type === 'directory') {
+      // @ts-ignore
+      const localPath = this._manager.services.contents.localPath(item.path);
+      void this.model.toggle(localPath);
+    } else {
+      const path = item.path;
+      // @ts-ignore
+      this._handleOpenFile(path);
     }
   }
 
@@ -362,13 +408,22 @@ export class DirTreeListing extends DirListing {
 
     if (entry) {
       if (entry.type === 'directory') {
-        this.model.path = '/' + entry.path;
+        const isCurrentlyOpen = this.model.isOpen(entry.path);
 
         if (this._singleClickToUnfold && event.button === 0) {
-          this.model.toggle(entry.path);
+          if (isCurrentlyOpen) {
+            const parent = PathExt.dirname(entry.path);
+            this.model.path = parent ? '/' + parent : this.model.rootPath;
+          } else {
+            this.model.path = '/' + entry.path;
+          }
+          void this.model.toggle(entry.path);
+        } else {
+          this.model.path = '/' + entry.path;
         }
       } else {
-        this.model.path = '/' + PathExt.dirname(entry.path);
+        const parent = PathExt.dirname(entry.path);
+        this.model.path = parent ? '/' + parent : this.model.rootPath;
       }
     } else {
       // TODO Upstream this logic to JupyterLab (clearing selection when clicking the empty space)?
@@ -458,6 +513,15 @@ export class FilterFileTreeBrowserModel extends FilterFileBrowserModel {
   }
 
   /**
+   * Force a refresh of the directory contents.
+   */
+  async refresh(): Promise<void> {
+    await this.cd(this.rootPath);
+    // @ts-ignore
+    this._refreshed.emit(void 0);
+  }
+
+  /**
    * Change directory.
    *
    * @param path - The path to the file or directory.
@@ -465,24 +529,39 @@ export class FilterFileTreeBrowserModel extends FilterFileBrowserModel {
    * @returns A promise with the contents of the directory.
    */
   async cd(pathToUpdate = this.rootPath): Promise<void> {
-    const result = await this.fetchContent(this.rootPath, pathToUpdate);
-
-    // @ts-ignore
-    this.handleContents({
-      name: this.rootPath,
-      path: this.rootPath,
-      type: 'directory',
-      content: result
-    });
-
-    if (this._savedState && this._stateKey) {
-      void this._savedState.save(this._stateKey, { openState: this.openState });
+    if (this._cdPending) {
+      await this._cdPending;
     }
 
-    this.onRunningChanged(
-      this.manager.services.sessions,
-      this.manager.services.sessions.running()
-    );
+    const performCd = async () => {
+      const result = await this.fetchContent(this.rootPath, pathToUpdate);
+
+      // @ts-ignore
+      this.handleContents({
+        name: this.rootPath,
+        path: this.rootPath,
+        type: 'directory',
+        content: result
+      });
+
+      if (this._savedState && this._stateKey) {
+        void this._savedState.save(this._stateKey, {
+          openState: this.openState
+        });
+      }
+
+      this.onRunningChanged(
+        this.manager.services.sessions,
+        this.manager.services.sessions.running()
+      );
+    };
+
+    this._cdPending = performCd();
+    try {
+      await this._cdPending;
+    } finally {
+      this._cdPending = null;
+    }
   }
 
   /**
@@ -556,7 +635,7 @@ export class FilterFileTreeBrowserModel extends FilterFileBrowserModel {
     this.openState[pathToToggle] = !this.openState[pathToToggle];
 
     // Refresh
-    this.cd(this.rootPath);
+    await this.cd(this.rootPath);
   }
 
   /**
@@ -594,11 +673,19 @@ export class FilterFileTreeBrowserModel extends FilterFileBrowserModel {
         continue;
       }
 
-      const isOpen =
-        (pathToUpdate && pathToUpdate.startsWith('/' + entry.path)) ||
-        this.isOpen(entry.path);
+      const isPathToUpdate =
+        !!pathToUpdate &&
+        pathToUpdate !== '.' &&
+        pathToUpdate !== this.rootPath &&
+        (pathToUpdate === '/' + entry.path ||
+          pathToUpdate.startsWith('/' + entry.path + '/') ||
+          pathToUpdate === entry.path ||
+          pathToUpdate.startsWith(entry.path + '/'));
+
+      const isOpen = isPathToUpdate || this.isOpen(entry.path);
 
       if (isOpen) {
+        this.openState[entry.path] = true;
         const subEntryContent = await this.fetchContent(
           entry.path,
           pathToUpdate
@@ -644,6 +731,7 @@ export class FilterFileTreeBrowserModel extends FilterFileBrowserModel {
   private _path: string;
   private contentManager: Contents.IManager;
   private openState: { [path: string]: boolean } = {};
+  private _cdPending: Promise<void> | null = null;
 }
 
 /**
@@ -655,7 +743,6 @@ export class FileTreeBrowser extends FileBrowser {
 
     this.mainPanel.layout?.removeWidget(this.crumbs);
 
-    this.showLastModifiedColumn = false;
     this.showFileCheckboxes = false;
   }
 
@@ -668,16 +755,6 @@ export class FileTreeBrowser extends FileBrowser {
       this.listing.setColumnVisibility('is_selected', false);
       // @ts-ignore
       this._showFileCheckboxes = false;
-    }
-  }
-
-  get showLastModifiedColumn(): boolean {
-    return false;
-  }
-
-  set showLastModifiedColumn(value: boolean) {
-    if (this.listing.setColumnVisibility) {
-      this.listing.setColumnVisibility('last_modified', false);
     }
   }
 

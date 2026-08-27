@@ -5,7 +5,11 @@ import {
   JupyterFrontEndPlugin
 } from '@jupyterlab/application';
 
-import { IFileBrowserFactory } from '@jupyterlab/filebrowser';
+import {
+  FileBrowser,
+  FilterFileBrowserModel,
+  IFileBrowserFactory
+} from '@jupyterlab/filebrowser';
 
 import { IDocumentManager } from '@jupyterlab/docmanager';
 
@@ -39,22 +43,47 @@ const fileBrowserFactory: JupyterFrontEndPlugin<IFileBrowserFactory> = {
     state: IStateDB | null
   ): Promise<IFileBrowserFactory> => {
     const setting = await settings.load(SETTINGS_ID);
+    const enabled = (setting.get('enabled').composite as boolean) ?? true;
 
-    const tracker = new WidgetTracker<FileTreeBrowser>({ namespace });
+    const tracker = new WidgetTracker<FileBrowser>({ namespace });
     const createFileBrowser = (
       id: string,
       options: IFileBrowserFactory.IOptions = {}
     ) => {
+      const stateObj =
+        options.state === null
+          ? undefined
+          : options.state || state || undefined;
+
+      if (!enabled) {
+        const model = new FilterFileBrowserModel({
+          translator: translator,
+          auto: options.auto ?? true,
+          manager: docManager,
+          driveName: options.driveName || '',
+          refreshInterval: options.refreshInterval,
+          state: stateObj
+        });
+        const widget = new FileBrowser({
+          id,
+          model,
+          restore: options.restore,
+          translator
+        });
+
+        // Track the newly created file browser.
+        void tracker.add(widget);
+
+        return widget;
+      }
+
       const model = new FilterFileTreeBrowserModel({
         translator: translator,
         auto: options.auto ?? true,
         manager: docManager,
         driveName: options.driveName || '',
         refreshInterval: options.refreshInterval,
-        state:
-          options.state === null
-            ? undefined
-            : options.state || state || undefined
+        state: stateObj
       });
       const widget = new FileTreeBrowser({
         id,
@@ -85,7 +114,7 @@ const fileBrowserFactory: JupyterFrontEndPlugin<IFileBrowserFactory> = {
       });
 
       // Track the newly created file browser.
-      void tracker.add(widget);
+      void tracker.add(widget as any);
 
       return widget;
     };
