@@ -148,10 +148,22 @@ export class FileTreeRenderer extends DirListing.Renderer {
     selected?: boolean,
     ...args: any[]
   ): void {
+    let customFileType = fileType;
+    let isOpenDir = false;
+    if (model.type === 'directory') {
+      isOpenDir = this.model.isOpen(model.path);
+      if (fileType) {
+        customFileType = {
+          ...fileType,
+          icon: isOpenDir ? folderOpenIcon : folderIcon
+        };
+      }
+    }
+
     (super.updateItemNode as any)(
       node,
       model,
-      fileType,
+      customFileType,
       translator,
       hiddenColumns,
       selected,
@@ -159,26 +171,20 @@ export class FileTreeRenderer extends DirListing.Renderer {
     );
 
     if (model.type === 'directory') {
-      const iconContainer = DOMUtils.findElement(
-        node,
-        'jp-DirListing-itemIcon'
-      );
-
-      if (iconContainer) {
-        if (this.model.isOpen(model.path)) {
-          folderOpenIcon.element({
-            container: iconContainer,
-            className: 'jp-DirListing-itemIcon',
-            stylesheet: 'listing'
-          });
-        } else {
-          folderIcon.element({
+      const icon = isOpenDir ? folderOpenIcon : folderIcon;
+      requestAnimationFrame(() => {
+        const iconContainer = DOMUtils.findElement(
+          node,
+          'jp-DirListing-itemIcon'
+        );
+        if (iconContainer) {
+          icon.element({
             container: iconContainer,
             className: 'jp-DirListing-itemIcon',
             stylesheet: 'listing'
           });
         }
-      }
+      });
     }
 
     // Removing old vbars
@@ -243,8 +249,10 @@ export class DirTreeListing extends DirListing {
     this._singleClickToUnfold = value;
   }
 
+  private _dummyHeader = document.createElement('div');
+
   get headerNode(): HTMLElement {
-    return document.createElement('div');
+    return this._dummyHeader;
   }
 
   sort(state: DirListing.ISortState): void {
@@ -651,13 +659,18 @@ export class FilterFileTreeBrowserModel extends FilterFileBrowserModel {
     this._isRestored.resolve(undefined);
   }
 
+  private _normalizePath(path: string): string {
+    return path.replace(/^\/+/, '');
+  }
+
   /**
    * Open/close directories to discover/hide a given path.
    *
    * @param pathToToggle - The path to discover/hide.
    */
   async toggle(pathToToggle = this.rootPath): Promise<void> {
-    this.openState[pathToToggle] = !this.openState[pathToToggle];
+    const norm = this._normalizePath(pathToToggle);
+    this.openState[norm] = !this.openState[norm];
 
     // Refresh
     await this.cd(this.rootPath);
@@ -672,7 +685,7 @@ export class FilterFileTreeBrowserModel extends FilterFileBrowserModel {
    *
    */
   isOpen(path: string): boolean {
-    return !!this.openState[path];
+    return !!this.openState[this._normalizePath(path)];
   }
 
   private async fetchContent(
@@ -689,7 +702,8 @@ export class FilterFileTreeBrowserModel extends FilterFileBrowserModel {
 
     const sortedContent = this.sortContents(result.content);
 
-    this.openState[path] = true;
+    const normPath = this._normalizePath(path);
+    this.openState[normPath] = true;
 
     for (const entry of sortedContent) {
       items.push(entry);
@@ -698,19 +712,20 @@ export class FilterFileTreeBrowserModel extends FilterFileBrowserModel {
         continue;
       }
 
+      const normEntry = this._normalizePath(entry.path);
       const isPathToUpdate =
         !!pathToUpdate &&
         pathToUpdate !== '.' &&
         pathToUpdate !== this.rootPath &&
-        (pathToUpdate === '/' + entry.path ||
-          pathToUpdate.startsWith('/' + entry.path + '/') ||
-          pathToUpdate === entry.path ||
-          pathToUpdate.startsWith(entry.path + '/'));
+        (pathToUpdate === '/' + normEntry ||
+          pathToUpdate.startsWith('/' + normEntry + '/') ||
+          pathToUpdate === normEntry ||
+          pathToUpdate.startsWith(normEntry + '/'));
 
-      const isOpen = isPathToUpdate || this.isOpen(entry.path);
+      const isOpen = isPathToUpdate || this.isOpen(normEntry);
 
       if (isOpen) {
-        this.openState[entry.path] = true;
+        this.openState[normEntry] = true;
         const subEntryContent = await this.fetchContent(
           entry.path,
           pathToUpdate
@@ -718,7 +733,7 @@ export class FilterFileTreeBrowserModel extends FilterFileBrowserModel {
 
         items = items.concat(subEntryContent);
       } else {
-        this.openState[entry.path] = false;
+        this.openState[normEntry] = false;
       }
     }
 
