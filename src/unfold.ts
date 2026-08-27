@@ -440,6 +440,10 @@ export class DirTreeListing extends DirListing {
    * is clicking on an empty space.
    */
   private _eventMouseDown(event: MouseEvent): void {
+    if (event.button !== 0) {
+      return;
+    }
+
     const entry = this.modelForClick(event);
 
     if (entry) {
@@ -781,7 +785,7 @@ export class FileTreeBrowser extends FileBrowser {
   constructor(options: FileTreeBrowser.IOptions) {
     super(options);
 
-    this.mainPanel.layout?.removeWidget(this.crumbs);
+    this.crumbs.hide();
 
     this.showFileCheckboxes = false;
   }
