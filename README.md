@@ -1,25 +1,32 @@
-# jupyterlab-unfold
+# jupyterlab-unfold (fork)
 
-[![Extension status](https://img.shields.io/badge/status-ready-success 'ready to be used')](https://jupyterlab-contrib.github.io/)
-[![Github Actions Status](https://github.com/jupyterlab-contrib/jupyterlab-unfold/actions/workflows/build.yml/badge.svg)](https://github.com/jupyterlab-contrib/jupyterlab-unfold/actions?query=workflow%3ATests)
-[![Binder](https://mybinder.org/badge_logo.svg)](https://mybinder.org/v2/gh/jupyterlab-contrib/jupyterlab-unfold/master?urlpath=lab)
-[![PyPI](https://img.shields.io/pypi/v/jupyterlab-unfold)](https://pypi.org/project/jupyterlab-unfold/)
-[![Conda (channel only)](https://img.shields.io/conda/vn/conda-forge/jupyterlab-unfold)](https://anaconda.org/conda-forge/jupyterlab-unfold)
+> [!NOTE]
+> This repository is a fork of [jupyterlab-contrib/jupyterlab-unfold](https://github.com/jupyterlab-contrib/jupyterlab-unfold).
 
-An IDE-like file browser
+An IDE-like file browser for JupyterLab.
 
-![jupyterlab-unfold](https://raw.githubusercontent.com/jupyterlab-contrib/jupyterlab-unfold/master/images/screenshot.png)
+## Differences from Upstream
+
+The original upstream repository intentionally disables the display of `Last Modified` and `Created` date columns. This fork introduces the following enhancements:
+
+1. **JupyterLab Standard Column Settings Support**:
+   - Reflects JupyterLab's standard File Browser settings (`Show file size column`, `Show last modified column`, and `Show date created column`) in the unfolded tree view.
+   - Preserves a clean column ordering: `Name → Size → Modified → Created`.
+2. **Enable Unfold Toggle Setting**:
+   - Adds an `Enable Unfold` (`enabled`) setting in Settings → Unfold File Tree Browser. When disabled, JupyterLab falls back to the standard File Browser without needing to uninstall the extension (requires reload).
+3. **Smooth Tree Navigation & Synchronization**:
+   - Fixes race conditions and icon/tree desynchronization when opening and collapsing directories.
 
 ## Requirements
 
-- JupyterLab >= 4.0.0,<5.0
+- JupyterLab >= 4.0.0,<5.0 (tested on JupyterLab 4.6.3)
 
 ## Install
 
-To install the extension, execute:
+To install this fork directly from GitHub, execute:
 
 ```bash
-pip install jupyterlab-unfold
+pip install git+https://github.com/hashimoto-koh/jupyterlab-unfold.git
 ```
 
 ## Uninstall

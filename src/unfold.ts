@@ -30,7 +30,7 @@ import {
 
 import { ITranslator } from '@jupyterlab/translation';
 
-import { LabIcon } from '@jupyterlab/ui-components';
+import { LabIcon, folderIcon } from '@jupyterlab/ui-components';
 
 import { IStateDB } from '@jupyterlab/statedb';
 
@@ -158,17 +158,27 @@ export class FileTreeRenderer extends DirListing.Renderer {
       ...args
     );
 
-    if (model.type === 'directory' && this.model.isOpen(model.path)) {
+    if (model.type === 'directory') {
       const iconContainer = DOMUtils.findElement(
         node,
         'jp-DirListing-itemIcon'
       );
 
-      folderOpenIcon.element({
-        container: iconContainer,
-        className: 'jp-DirListing-itemIcon',
-        stylesheet: 'listing'
-      });
+      if (iconContainer) {
+        if (this.model.isOpen(model.path)) {
+          folderOpenIcon.element({
+            container: iconContainer,
+            className: 'jp-DirListing-itemIcon',
+            stylesheet: 'listing'
+          });
+        } else {
+          folderIcon.element({
+            container: iconContainer,
+            className: 'jp-DirListing-itemIcon',
+            stylesheet: 'listing'
+          });
+        }
+      }
     }
 
     // Removing old vbars
@@ -250,10 +260,28 @@ export class DirTreeListing extends DirListing {
     return this._model;
   }
 
+  private _eventClick(event: MouseEvent): void {
+    const entry = this.modelForClick(event);
+
+    if (entry) {
+      if (entry.type === 'directory') {
+        if (this._singleClickToUnfold && event.button === 0) {
+          event.preventDefault();
+          event.stopPropagation();
+          void this.model.toggle(entry.path);
+          return;
+        }
+      }
+    }
+    super.handleEvent(event);
+  }
+
   private async _eventDblClick(event: MouseEvent): Promise<void> {
     const entry = this.modelForClick(event);
 
     if (entry?.type === 'directory') {
+      event.preventDefault();
+      event.stopPropagation();
       if (!this._singleClickToUnfold) {
         await this.model.toggle(entry.path);
       }
@@ -409,15 +437,9 @@ export class DirTreeListing extends DirListing {
     if (entry) {
       if (entry.type === 'directory') {
         const isCurrentlyOpen = this.model.isOpen(entry.path);
-
-        if (this._singleClickToUnfold && event.button === 0) {
-          if (isCurrentlyOpen) {
-            const parent = PathExt.dirname(entry.path);
-            this.model.path = parent ? '/' + parent : this.model.rootPath;
-          } else {
-            this.model.path = '/' + entry.path;
-          }
-          void this.model.toggle(entry.path);
+        if (isCurrentlyOpen && this._singleClickToUnfold) {
+          const parent = PathExt.dirname(entry.path);
+          this.model.path = parent ? '/' + parent : this.model.rootPath;
         } else {
           this.model.path = '/' + entry.path;
         }
@@ -445,6 +467,9 @@ export class DirTreeListing extends DirListing {
 
   handleEvent(event: Event): void {
     switch (event.type) {
+      case 'click':
+        this._eventClick(event as MouseEvent);
+        break;
       case 'dblclick':
         this._eventDblClick(event as MouseEvent);
         break;
